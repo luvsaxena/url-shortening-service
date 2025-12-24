@@ -1,0 +1,69 @@
+# Distributed Resilience Layer: Hybrid-Cache Circuit Breaker
+
+A high-performance, distributed Circuit Breaker implementation for Spring Boot microservices. This project demonstrates how to protect service ecosystems from cascading failures using a two-tier caching strategy (L1/L2) and real-time observability.
+
+## 🚀 Key Features
+
+* **Distributed State:** Global circuit state consistency across multiple nodes via Redis (L2).
+* **High Performance:** Sub-millisecond state lookups using Caffeine Cache (L1) to avoid unnecessary network I/O.
+* **Atomic Transitions:** Lua-scripted failure tracking to prevent race conditions during state changes.
+* **Observability:** Full Prometheus integration with custom Gauges and Counters for real-time health monitoring.
+* **Control Plane:** RESTful Admin APIs for manual overrides (Force-Open/Force-Close).
+
+---
+
+## 🏗 Architecture Overview
+
+The system operates as an Interceptor pattern using Spring AOP. Every time a protected method is called, the system performs a hierarchical check:
+
+1.  **L1 Check:** Check local Caffeine cache (Memory).
+2.  **L2 Check:** If L1 is expired, sync with Redis (Distributed).
+3.  **Execution:** If state is `CLOSED`, proceed. If `OPEN`, throw `CircuitBreakerOpenException` immediately.
+
+
+
+---
+
+## 📊 Monitoring with Prometheus
+
+The project exposes metrics at `/actuator/prometheus` which are pulled by a Prometheus scraper.
+
+### Core Metrics:
+* `cb_state`: A gauge representing the current status (0 = Healthy, 1 = Tripped).
+* `cb_trips_total`: A counter tracking how many times the circuit has transitioned to an OPEN state.
+* `cb_call_duration`: A timer measuring downstream latency.
+
+
+
+---
+
+## 🛠 Getting Started
+
+### Prerequisites
+* Java 17+
+* Docker Desktop (for Redis and Prometheus)
+* Spring Boot 3.x
+
+### Running the Infrastructure
+1. **Start Redis:**
+   ```bash
+   docker run -d --name redis -p 6379:6379 redis
+
+2. Start Prometheus: Map your prometheus.yml to the container and run:
+
+    docker run -d -p 9090:9090 -v ./prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+
+
+🔌 API Reference
+
+Admin Controls
+
+Method,Endpoint,Description
+POST,/admin/cb/{name}/force-open,Manually trip the circuit.
+POST,/admin/cb/{name}/force-close,Manually reset the circuit.
+GET,/admin/cb/{name}/status,Check the current distributed state.
+
+🛡 Performance & Scalability
+Fail-Fast: Requests are rejected in microseconds when the circuit is open, saving thread-pool capacity.
+
+Eventually Consistent: L1 caches refresh every 10-30 seconds to stay in sync with the global L2 state while maintaining maximum throughput.

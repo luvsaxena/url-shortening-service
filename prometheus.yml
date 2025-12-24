@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s # How often to pull data. 5s is good for testing.
+
+scrape_configs:
+  - job_name: 'spring-circuit-breaker'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # Use 'host.docker.internal' to allow the Docker container 
+      # to talk to your IDE/Localhost app
+      - targets: ['host.docker.internal:8080']
