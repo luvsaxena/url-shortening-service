@@ -28,7 +28,7 @@ Global Event Bus (Kafka): Asynchronous event distribution across regions.
 
 Audit System: Distributed NoSQL store for immutable logging.
 
-![Blank diagram (5).png](../../Downloads/Blank%20diagram%20%285%29.png)
+![](/Users/luvsaxena/Downloads/Blank diagram (5).png)
 
 4. Deep Dives
    4.1. Atomic Bid Processing (The "Hot Path")
