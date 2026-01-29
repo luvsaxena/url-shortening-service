@@ -1,0 +1,24 @@
+Here is a recap of the key architectural patterns we built today. Review this right before you walk into your SolarWinds interview:
+
+1. The Core Architecture: Two-Stage Scatter-Gather
+Stage 1 (Scatter): 100+ Flink workers handle 1M events/sec. They are CPU-intensive. They produce local "Top-100" summaries for 1-minute windows.
+
+Stage 2 (Gather): 1 Merger Flink worker consumes those summaries from an intermediate Kafka topic. It is I/O-intensive. It calculates the global Top-10 and writes to Redis.
+
+The Benefit: Fault Isolation. If Redis or the Merger slows down, the 100 ingestion workers keep running at full speed.
+
+2. The Storage Strategy
+Real-time: Use Redis Sorted Sets with the Atomic Swap (RENAME) pattern to provide a flicker-free dashboard experience.
+
+Historical: Use ClickHouse with Asynchronous Inserts and Batching (by time and count) to store data for 24-hour/30-day "Top-N" roll-ups.
+
+3. Scaling & Reliability
+Backpressure: Leverage Kafka as a buffer to insulate high-throughput producers from slow consumers.
+
+Hot Keys: Use Salting (adding a random suffix to keys) to distribute the load of a single "heavy" agent across multiple Flink workers.
+
+Watermarking: Use Event-Time processing to ensure that windows only trigger once all 100 workers have reported in for a specific minute.
+
+Okay got it film includes that timer and the event data in its checkpoint. So if the flink crashes so it can recover it is state from the S3 and it can read from that offset from the kafka to get the complete data and it is check pointing the timer as well. So it will get that information as well from the S3
+
+Flink saves the event state in checkpoint in s3.

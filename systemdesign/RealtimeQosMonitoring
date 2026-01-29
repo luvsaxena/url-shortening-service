@@ -1,0 +1,47 @@
+System Design Summary: Real-Time QoS Monitoring at Scale
+1. Ingestion & Scalability
+Source Optimization: Millions of video players (producers) se data lene ke liye humne Client-side Batching ka use kiya (e.g., sending events every 10s). Isse backend load 10x kam ho gaya.
+
+Kafka Layer 1 (Raw Events): Data ko user_id par partition kiya gaya taaki load barabar distribute ho aur "Hot Partitions" (jaise bade ISPs) ki wajah se system crash na ho.
+
+2. Multi-Stage Aggregation (The "Two-Layer" Kafka Approach)
+Aggregating 1M EPS directly expensive hota hai, isliye humne ise divide kiya:
+
+Intermediate Workers (Stage 1): Ye workers Raw Kafka se data read karte hain aur memory mein "Local Aggregates" (ISP + Region level counters) banate hain.
+
+Kafka Layer 2 (Aggregated Topic): Stage 1 workers apna aggregated data is dusri pipeline mein bhejte hain, jo isp_name par partitioned hai.
+
+Final Consumer: Kyunki data ab already summarized aur ISP-grouped hai, final worker ise asani se ClickHouse mein push kar deta hai for real-time dashboards.
+
+3. Investigation & Storage Strategy
+Humne "Happy Users" ka raw data store na karke cost bachayi:
+
+Filtering: Stage 1 workers sirf "Critical Errors" (buffering, quality drop) ko filter karte hain.
+
+S3 Data Lake: Ye filtered errors S3 mein store hote hain. Humne Folder-based Partitioning use ki: /isp/region/dt/hr/min/.
+
+Querying: Engineer dashboard par issue dekh kar AWS Athena ke through specific S3 folders ko scan karta hai taaki affected users ki list mil sake.
+
+4. High Availability & Fault Tolerance (The "Resilience" Layer)
+Agar main systems down honge, toh data loss rokne ke liye humne ye design kiya:
+
+Scenario A: ClickHouse / S3 is Down
+Level 1 (Immediate Retry): Consumer 3 baar retry karega.
+
+Level 2 (Side Kafka Topic): Agar fir bhi fail hota hai, toh data ek Retry-Kafka-Topic mein jayega.
+
+Level 3 (Dead Letter Table): Agar Kafka retry limit bhi exhaust ho jaye, toh data ek Persistent DB Table mein as a "Dead Letter" save hoga.
+
+Scenario B: S3 Regional Failure
+Secondary Bucket: Humne ek fallback mechanism rakha jahan primary region (e.g., US-East) down hone par data secondary region (e.g., Mumbai) ki S3 bucket mein switch ho jayega.
+
+Relay Workers: Jab system wapas online aayega, ye workers Dead Letter Table ya Side-Topics se data utha kar main stores mein "Drain" karenge.
+
+Key Architectural Principles Applied:
+Decoupling: Processing aur Storage ko alag rakha taaki ek ki failure dusre ko impact na kare.
+
+Efficiency: Aggregation ko distribute kiya taaki koi single node bottleneck na bane.
+
+Durability: Har step par backup storage (Kafka/DB) ka provision rakha.
+
+Ye aapka complete blueprint hai. Aaj ki discussion ne dikhaya ki kaise simple "counters" ko ek massive scale monitoring tool mein convert kiya ja sakta hai.

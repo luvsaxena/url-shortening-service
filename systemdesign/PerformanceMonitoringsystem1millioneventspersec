@@ -1,0 +1,34 @@
+The Final Summary for Your Notes
+You can use this structured summary to explain your design in the interview. It highlights the problem-solving journey we took—from ingestion to long-term cost optimization.
+
+1. The Problem & Objectives
+	•	Scale: 1M events/sec from 100k distributed agents.
+	•	Multi-tenancy: Isolated processing for different customers (e.g., Flipkart).
+	•	SLA Goals: * Alerting: <10 seconds latency for critical metrics.
+	◦	Analytics: Interactive dashboards for 15 days of "hot" data.
+	◦	Compliance: 1-year historical data retention at minimum cost.
+2. Architectural Layers
+A. Ingestion & Load Balancing
+	•	Agents: Edge batching and basic filtering.
+	•	Gateway: Rate-limiting per tenant_id. It uses Ingestion Time as a fallback if the Agent Clock Drift is >5 minutes, preventing "poisoned" time windows.
+	•	Kafka: Partitioned by agent_id to ensure a uniform load across the cluster.
+B. Processing Paths (The "Dual-Consumer" Isolation)
+	•	The Live Path (Flink): Dedicated consumer group for alerting.
+	◦	Logic: Uses a 5-minute sliding window (State stored in RocksDB).
+	◦	Optimization: Watermarks allow for 2 minutes of "late" data without delaying the alert.
+	•	The Analytics Path (ClickHouse): Separate consumer group for troubleshooting.
+	◦	Logic: Pulls data into a Columnar Store.
+	◦	Isolation: If ClickHouse disk I/O spikes, the Kafka offset lag only affects the analytics group, keeping the Alerting SLAs safe.
+C. Storage & FinOps (Hot-Warm-Cold)
+	•	Hot (15 Days): Raw data in ClickHouse for high-resolution debugging.
+	•	Warm (1 Year): Downsampled data (1-minute averages) stored on S3 in Parquet format.
+	•	Cold (Deep Archive): Raw logs on S3 Glacier if required by legal compliance.
+
+3. Staff-Level Trade-offs (The "Why")
+Decision                    Justification
+agent_id Partitioning       Prevents "Hot Partitions" caused by massive tenants like Flipkart.
+Kafka Isolation             Ensures ClickHouse ingestion issues don't "blind" the Alerting system.
+Hysteresis                  Prevents "alert flapping" (e.g., CPU bouncing around 90%) and reduces alert fatigue.
+Parquet on S3               Reduces storage costs by 30x through columnar compression and downsampling.
+
+

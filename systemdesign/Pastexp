@@ -1,0 +1,47 @@
+1. Legacy Monolith to Microservices Migration (Flipkart)
+
+The Challenge: Transitioning a Tier-0 Monolithic Payment system with 5M+ sensitive financial records to a Microservices platform without downtime.
+
+
+Staff Decision (The Trade-off): Opted against 100% data backfill to save X weeks of engineering effort; migrated "Hot" data (last 12 months) and implemented Just-In-Time (JIT) migration for legacy records.
+
+
+The Architecture: Deployed the Strangler Fig Pattern using a Read-Wrapper/Orchestration layer to maintain client experience across dual-data sources.
+
+
+Impact: 40% reduction in migration timeline and 100% financial integrity via a custom Idempotency Framework.
+
+2. Tier-0 High-Scale Reliability & Performance (Flipkart/Winzo)
+
+Flipkart BBD Scale: Orchestrated system scaling to handle 4x peak surges and 3M+ daily high-value transactions with 99.99% reliability.
+
+
+Winzo Data Platform: Architected a TypeScript-based Kafka producer and 3-node Cassandra cluster supporting 10K writes/sec with P99 latency <30ms.
+
+
+Optimization (FinOps): Introduced Snappy compression in HBase, reclaiming 50-60% disk usage and deferring hardware procurement costs.
+
+
+Performance Tuning: Diagnosed MySQL query optimizer issues under skewed data, implementing index hints that improved performance by 4x-5x.
+
+3. Strategic Leadership & Organizational Impact (RingCentral/Tekion)
+
+Cloud Migration & FinOps: Led a geo-region migration from AWS to Azure, delivering $120K in annual infrastructure savings (~30% reduction).
+
+
+Technical Consensus: Authored strategic design docs for an Automated Role Creation System, forging alignment between VPs and Directors to eliminate manual setup bottlenecks.
+
+
+Mentorship: Mentored senior engineers into Staff/Lead roles and conducted 80+ technical evaluations to grow core engineering organizations.
+
+
+Process Efficiency: Spearheaded an org-level initiative that reduced customer onboarding lead time from 8 days to under 4 hours (>95% gain).
+
+Staff Mindset Reminders for the Interview:
+Cost of Delay: "I chose JIT migration because the opportunity cost of engineering weeks outweighed the 0.01% access risk."
+
+
+Domain Boundaries: "I ensured the accounting ecosystem remained decoupled from OMS to maintain long-term system evolution".
+
+
+Operational Excellence: "Tier-0 systems aren't just about code; they are about on-call readiness, performance tuning, and zero-downtime deployments".

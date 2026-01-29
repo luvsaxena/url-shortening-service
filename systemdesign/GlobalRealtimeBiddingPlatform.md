@@ -28,6 +28,8 @@ Global Event Bus (Kafka): Asynchronous event distribution across regions.
 
 Audit System: Distributed NoSQL store for immutable logging.
 
+CDC : CDC syncs the data from redis to sql database in realtime. Sql database ensures durability. 
+
 ![BiddingPlatform.png](BiddingPlatform.png)
 
 4. Deep Dives
@@ -53,7 +55,7 @@ In the event of a Kafka or Network failure:
 
 Local Persistence: The Bidding Service writes events to a local persistent buffer.
 
-Relay: A background worker retries the transmission once the message broker is back online, ensuring 100% audit compliance.
+Relay: A background worker retries the transmission once the message broker is back online, ensuring 100% audit compliance. Audit system processes both bid_accepted and bid_rejected events to ensure a legally defensible history of auction.
 
 5. Technology Stack & Justification
    Component	Technology	Why?

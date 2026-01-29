@@ -1,0 +1,56 @@
+System Design Document: Scalable & Resilient Order Management System
+1. Problem Statement
+Design a distributed Order Management System (OMS) capable of handling 1 Billion+ users, ensuring high consistency, fault tolerance, and efficient data retrieval even during system crashes or high load from VIP customers.
+
+2. High-Level Architecture
+We follow the CQRS (Command Query Responsibility Segregation) pattern to separate our Write path (Transaction processing) from our Read path (Customer history).
+Core Components:
+	•	Write Store (OLTP): Sharded PostgreSQL for ACID compliance.
+	•	Read Store (OLAP): Elasticsearch/NoSQL for fast historical search.
+	•	Message Broker: Kafka for asynchronous data propagation between services.
+	•	Recovery Worker: Background process for self-healing and consistency.
+
+3. Data Consistency & Recovery (Resilience)
+To ensure no order is left in a "Hanging State" due to system crashes:
+	•	State Machine: Orders move through defined states: PENDING, PAYMENT_SUCCESS, INVENTORY_ALLOCATED, COMPLETED/FAILED.
+	•	Recovery Workers: * Scan the DB for records stuck in non-terminal states for $>X$ minutes.
+	◦	Probing: Check status with downstream systems (e.g., Payment Gateway) before taking action.
+	•	Dead Letter Queue (DLQ): After $N$ failed retries with Exponential Backoff, records are moved to a DLQ for manual intervention.
+
+4. Scalability & Sharding Strategy
+Horizontal Sharding
+	•	Sharding Key: user_id. This ensures all orders for a single user reside on the same shard, making "Recent Orders" queries extremely fast.
+	•	Composite Index: (user_id, created_at) is used to fetch the latest records without scanning the entire shard.
+The "Celebrity" / Hot Shard Problem
+To handle high-volume VIP customers (e.g., Amazon Business, Zomato):
+	•	Dedicated Tenancy: VIP users are moved to Dedicated Shards (Physical Isolation) so their load doesn't impact standard users ("Noisy Neighbor" effect).
+	•	Salting: For extreme cases, a VIP's data is spread across multiple shards using a user_id + salt approach.
+
+5. Data Lifecycle & Storage Tiers
+To keep the primary database "Lean and Mean":
+Tier    Duration        Storage Type        Retrieval Speed
+Hot     Last 6 Months   Sharded SQL (SSD)   Instant
+Warm    6 - 24 Months   Elasticsearch   Very Fast
+Cold    2 - 7 Years     S3 / Cold Storage   Offline (via Email)
+
+	•	Archival Flow: Orders older than 2 years are moved to S3. Users can request an archive via the UI, which triggers an async job to fetch data from S3.
+
+6. Read Strategy (The Hybrid Model)
+To balance consistency and performance:
+	1	Latest Orders (Last 24-48 Hours): Fetched directly from SQL Read-Replicas using the composite index. This ensures the user sees their order immediately after placing it (Strong Consistency).
+	2	Order History: Fetched from Elasticsearch to support complex filtering and high-speed scrolling.
+
+7. Observability & Monitoring
+	•	Metrics (Prometheus/Grafana):
+	◦	Operational health using In-memory Counters (Status counts).
+	◦	Alerts on "Anomalies" (e.g., if PENDING count spikes).
+	•	Logging & Tracing (ELK/Jaeger):
+	◦	Unique Trace ID per order to track requests across microservices.
+	◦	Semantic logging for state transitions.
+
+8. Key Staff-Level Decisions Made
+	•	Chosen Sharded SQL over NoSQL for the primary store to guarantee ACID transactions during order placement.
+	•	Implemented a "Pull-based" Recovery instead of just relying on Kafka retries to handle long-term system outages.
+	•	Optimized Monitoring by using in-memory metrics to avoid hammering the production DB with GROUP BY queries.
+
+Aapka architectural blueprint ab bilkul taiyar hai! Yeh document dikhata hai ki aapne sirf "feature" nahi banaya, balki ek Production-Ready system design kiya hai jo scale aur failure dono ko respect karta hai.
