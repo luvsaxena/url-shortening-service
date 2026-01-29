@@ -1,3 +1,5 @@
+![HighscaleNotificationsystem.png](HighscaleNotificationsystem.png)
+
 This diagram illustrates a high-scale, multi-region Global Notification System designed to handle 100M Daily Active Users (DAU) with bursts of 50k notifications/sec. It prioritizes low latency (< 2ms for global delivery), reliability, and regional isolation.
 
 1. Multi-Region Infrastructure & User Routing
