@@ -1,3 +1,6 @@
+The Problem: The "Top-N" Heavy Hitters
+The Scenario: SolarWinds monitors 100,000 customers. Each customer has thousands of servers. They want a Global Dashboard that shows the "Top 10 Servers by Error Rate" across their entire infrastructure in the last 1 minute, updated every 10 seconds.
+
 Here is a recap of the key architectural patterns we built today. Review this right before you walk into your SolarWinds interview:
 
 1. The Core Architecture: Two-Stage Scatter-Gather
@@ -19,6 +22,56 @@ Hot Keys: Use Salting (adding a random suffix to keys) to distribute the load of
 
 Watermarking: Use Event-Time processing to ensure that windows only trigger once all 100 workers have reported in for a specific minute.
 
-Okay got it film includes that timer and the event data in its checkpoint. So if the flink crashes so it can recover it is state from the S3 and it can read from that offset from the kafka to get the complete data and it is check pointing the timer as well. So it will get that information as well from the S3
+Okay got it flink includes that timer and the event data in its checkpoint. So if the flink crashes so it can recover it is state from the S3 and it can read from that offset from the kafka to get the complete data and it is check pointing the timer as well. So it will get that information as well from the S3
 
 Flink saves the event state in checkpoint in s3.
+
+To get the top 10 servers with highest error rates in last 24 hours
+
+The Data Reduction Journey
+	1	Stage 1 Workers: They take millions of raw events and produce 100,000 rows every minute (one per server). They batch-write these into the raw_metrics table in ClickHouse.
+	2	The Materialized View: It watches that raw_metrics table. Every time a batch arrives, it "upserts" that data into the hourly_metrics table.
+	3	The SummingMergeTree: In the background, ClickHouse merges those sixty 1-minute rows into one 1-hour row for each server.
+Why this makes the Top 10 query super fast:
+When you query for the "Top 10 Servers in the last 24 hours":
+	•	Without MV: ClickHouse scans $100,000 \times 60 \times 24 = \mathbf{144 \text{ Million Rows}}$.
+	•	With MV: ClickHouse scans $100,000 \times 24 = \mathbf{2.4 \text{ Million Rows}}$.
+
+The Destination Table (where data is aggregated at hourly basis for server)
+This is where the "hourly" summaries will live. We use the SummingMergeTree engine here, which is the "magic" that merges rows in the background.
+
+SQL
+CREATE TABLE hourly_metrics_destination (
+    timestamp DateTime,
+    server_id UInt32,
+    total_errors UInt64,
+    total_reqs UInt64
+) ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMMDD(timestamp)
+ORDER BY (timestamp, server_id);
+Step 3: The Materialized View (The "Pipe")
+
+This view acts as a trigger. Whenever a block of data is inserted into raw_metrics, this view calculates the hourly sum and sends it to the destination table.
+
+SQL
+CREATE MATERIALIZED VIEW hourly_metrics_mv
+TO hourly_metrics_destination AS
+SELECT
+    toStartOfHour(timestamp) AS timestamp,
+    server_id,
+    sum(error_count) AS total_errors,
+    sum(total_requests) AS total_reqs
+FROM raw_metrics
+GROUP BY timestamp, server_id;
+
+Additional notes on mv :
+
+The Materialized View is the "Translator"
+The SummingMergeTree only sums rows that are exactly identical in their Primary Key columns.
+
+Your Source Table has 1-minute precision (e.g., 10:01, 10:02, 10:03).
+If you just used a SummingMergeTree on the Source Table, it would never merge those rows because 10:01 is not the same as 10:02.
+
+The Materialized View acts as the translator that "floors" the time. It takes the data from the Source and says: "Forget the minutes;
+I'm going to change all of these to 10:00 and send them to the Destination Table."
+Without the MV, the SummingMergeTree would have nothing to "sum" because every row would have a different timestamp.
