@@ -1,0 +1,32 @@
+🚀 SolarWinds Interview Cheat Sheet (100k Servers Scale)
+1. Ingestion Architecture (The Firehose)
+	•	Strategy: Kafka $\rightarrow$ Stage 2 Workers $\rightarrow$ ClickHouse.
+	•	Key Concept: Client-Side Batching. 100k servers ka data direct insert nahi kar sakte. Workers ko 10s ya 100k rows ka buffer banana padega.
+	•	Why? ClickHouse "Too many parts" error se bachne ke liye aur Disk I/O optimize karne ke liye.
+	•	Reliability: At-least-once delivery. Offset tabhi commit hoga jab ClickHouse 200 OK dega.
+	•	Poison Pill: Failed messages ko DLQ (Dead Letter Queue) mein daalna hai taaki pipeline na ruke.
+2. Storage Strategy (Cost & Performance)
+	•	Tiering: * Hot (SSD): Last 24 hours (For active alerts/SRE).
+	◦	Warm (HDD): Last 7 days (For weekly trends).
+	◦	Cold (S3): 30+ days (For compliance/history).
+	•	Mechanism: ClickHouse TTL policies automatically data move karti hain.
+	•	Optimization: LowCardinality(String) use karna hai server_id aur status jaise columns ke liye (90% space bachat).
+3. Data Integrity & Deduplication
+	•	Engine: ReplacingMergeTree. Duplicate data ko background mein handle karta hai.
+	•	Staff Answer: "Select-before-insert" kabhi nahi karna (latency high ho jayegi). Hamesha database-level idempotency use karein.
+	•	Query Time: Agar background merge nahi hua, toh query mein argMax() ya GROUP BY use karein latest record ke liye.
+4. Massive Aggregation (Dashboarding)
+	•	Tool: Materialized Views (MV).
+	•	Flow: Raw Table $\rightarrow$ MV $\rightarrow$ SummingMergeTree (Hourly/Daily tables).
+	•	Benefit: 144 Million rows ko 2.4 Million rows mein badal deta hai. Dashboard sub-second mein load hoga.
+5. Disaster Recovery (DR)
+	•	Feature: Zero-Copy Replication.
+	•	Scenario: Agar Node-A crash ho jaye, toh naya node S3 se data "download" nahi karega. Wo sirf Metadata fetch karega (via Keeper) aur S3 ke purane objects ko point karega.
+	•	Recovery Time: Ghante (hours) nahi, sirf kuch minutes.
+
+⚠️ Top 3 "Trap" Questions & Your Answers
+Question                            The Trap                Your Staff Answer
+"Can we use JSON for all logs?"     Storage efficiency.     "Hum core fields (CPU, ID) ke liye Strict Schema use karenge for speed, aur extra metadata ke liye Map ya JSON column."
+"What if S3 is slow?"               System blocking.        "Hum Resource Isolation use karenge. S3 merges ke liye alag thread pool rakhenge taaki SSD inserts block na hon."
+"How to delete orphan S3 files?"    Cost leak.              "Hum ek periodic Reconciliation Job chalayenge jo ClickHouse metadata aur S3 bucket ko compare karke
+                                                            'unreferenced objects' delete karega."

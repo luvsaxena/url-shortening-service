@@ -1,0 +1,64 @@
+CLickhouse is OLAP
+Sql is OLTP
+
+ReplacingMergeTree engine
+
+CREATE TABLE raw_metrics (...)
+ENGINE = ReplacingMergeTree()
+ORDER BY (server_id, timestamp, event_id);
+
+How it works: You just insert the data. If the worker crashes and sends the same 10,000 rows again, ClickHouse will have two copies of those rows.
+
+The Magic: In the background, ClickHouse constantly "merges" data. When it sees two rows with the same ORDER BY keys,
+it deletes the older one automatically.
+
+
+Q:- "I like the ReplacingMergeTree approach for deduplication. However, as you know, ClickHouse performs merges in the background at its own pace.
+This means if I run a query right after a worker crash, I might see two identical rows because the 'background merge' hasn't happened yet.
+How do you ensure the SRE sees accurate, deduplicated numbers on their dashboard even if the merge hasn't finished?"
+
+Ans:- You are right. That is not the most optimise way to do it. It may be an optimise wave. We are doing it for last finding the server with most errors
+in last 1 minute. But if we are trying to find them for last 24 hours then it is not the most optimised way the optimised way will be using the final keyword
+which tells click house to merge on the fly for this specific query. So it will guarantee you will see the latest row. The only trade of will be that it will be
+relatively computationally heavy
+
+SELECT * FROM raw_metrics FINAL WHERE...
+
+By using the argMax function in our SQL, his offloads the heavy filtering to the database's C++ engine, which is much faster than pulling raw data into our
+application memory.
+
+ClickHouse is a Columnar Database. This means each column is stored in its own separate file on the disk.
+
+The Magic: When you add a column, ClickHouse doesn't rewrite the old data. It simply creates a new, empty file (or a file with default values) for that specific column.
+Performance: Adding a column is nearly instantaneous, even if you have 10 billion rows. It is a "metadata-only" operation for existing data.
+
+You can add a field as LowCardinality type. For fields like db_version that only apply to a subset of servers,
+you can use the LowCardinality type to ensure we don't waste disk I/O or space on the servers where that field is null.
+
+When you wrap a type in LowCardinality(String), ClickHouse stops storing the actual strings in the main data part. Instead, it creates a Dictionary (an index).
+
+How it works:
+It stores the unique strings (e.g., "Postgres 14", "MySQL 8") in a small table.
+In the main data rows, it only stores a small integer ID (0, 1, 2) pointing to that dictionary.
+Why it’s efficient:
+Storage: Instead of storing the string "Postgres-v14.1-Enterprise" (25 bytes) 1 million times, it stores the number 1 (1 byte) 1 million times.
+
+Node recovery :
+Okay. So you mean to say that is a coordination service lets say the keypad service which keeps the record that which note owns which data in S3 so
+let's see the note a Goose Down so when the we will restart the no Day again. So the node a will go to the keeper service. It will tell it that I am the
+no day what is the S3 data which I own Can you give me the remote disc configuration pointing to the S3 bucket and using it it will build its local meta data
+files on its new ssg, and it will be all set with in some minutes
+
+tiny technical correction to make sure you sound like an expert: The Remote Disk Configuration (the credentials and bucket URL) is actually something you provide in a config file
+when you start the node. The Keeper Service provides the List of Parts (the specific data).
+
+The Recovery Sequence
+Deployment: you spin up a fresh ClickHouse instance. You give it the config file that has the S3 bucket details (the "how to talk to S3" part).
+Identity: You tell the new instance, "Your name is node-a."
+The Handshake: The new node-a reaches out to Keeper.
+The Blueprint: Keeper looks at its database and says: "Ah, node-a! Welcome back. You are responsible for Table X, and here is the list of 5,000 Data
+Parts (S3 object keys) that belong to you."
+Local Reconstruction: Node A doesn't download the data; it just creates 5,000 tiny text files on its local SSD. Each file says: "I am Part_123, and
+my physical body is at s3://bucket/uuid_123."
+
+Zero-Copy Replication for near-instant node recovery.

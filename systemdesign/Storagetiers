@@ -1,0 +1,54 @@
+While storing the data in clickhouse in raw_metrics table we can have multi tiered storage strategy.
+
+We can have
+1 day SSD hot data
+2 day to 7 day HDD warm data
+older then 7 days S3 cold data
+older than 30 daya delete
+
+ALTER TABLE raw_metrics
+MODIFY TTL
+    timestamp + INTERVAL 1 DAY TO VOLUME 'warm_tier',   -- Move to HDD
+    timestamp + INTERVAL 7 DAY TO VOLUME 's3_tier',     -- Move to S3
+    timestamp + INTERVAL 30 DAY DELETE;                 -- Final cleanup
+
+You can define the volumes and tell clickhouse where ssd is mounted and where hdd is.
+
+Hot volume points to ssd
+Cold volume points to hdd path
+
+CREATE TABLE raw_metrics (
+    timestamp DateTime,
+    server_id UInt32,
+    ...
+) ENGINE = MergeTree()
+ORDER BY (timestamp, server_id)
+TTL timestamp + INTERVAL 1 DAY TO VOLUME 'cold_volume',   -- Moves to HDD after 24h
+    timestamp + INTERVAL 7 DAY DELETE;                    -- Deletes after 7 days
+
+In clickhouse s3 is treated just as another storage tier. so in conf you can define
+hot_disk: Your local NVMe/SSD.
+warm_disk: Your local HDD.
+s3_disk: A "Virtual Disk" that points to an S3 bucket (using an Endpoint and Access Keys).
+
+The data on s3 is queryable. When you run a query for data that is 15 days old, clickhouse realises
+the parts are on s3. Fetches only the specific columns/blocks needed (using http range request)
+
+Yes, this automated dual dis storage with the help a lot. It will save a lot of cost and 12. Store the data into the appropriate volume or the appropriate storage type based
+on its use for example the data lying on the ssg that is required. We require that data for one day period where we want to make faster queries to find the words which are giving errors
+for the data older than one day. We don't want we want have a requirement to do faster to do faster queries because that data will be a less crucial less important because that is one day holder.
+So it is we can move it to the HDD and the data older than seven days we can move it to the S3 because that data will be really exist so we can provide that data also if required without few seconds,
+let's see which will be acceptable would should be acceptable and it will be lying on to the S3 at a low cost at low cost. So it is low cost storage here and the data older than 30 days. We can delete storage strategy.
+We can organise our data into different volumes based on the query based on the type of query like the instant queries or these on the instant queries or the little bit slower queries we want to do on the older data
+
+Yes by setting a strict 30 day TTL you ensure that your cloud will doesn't explode it doesn't grow in finightly and it is manageable.
+
+If there is a crash or loss of local dist (ssd/hdd), then there could be a mismatch between s3 data as per clickhouse and
+the actual content or files lying on s3.
+In that case we can have a weekly job which will query system table (system.remote_data_paths) it contains the specific s3 paths
+where data is stored, if you find a file in s3 bucket which is not present in system.remote_data_paths then it is orphan.
+It has no references in clickhouse so it can be deleted from s3. Issue DeleteObject calls to s3 for those orphan keys.
+we can delete only orhans older than 24 hours to avoid race conditions during active inserts.
+This prevents data leaks and ensures we pay only for data which we can query
+
+You can mount the disk for ssd and hdd and create volumes hot and cold which will be used in multi-tiered storage

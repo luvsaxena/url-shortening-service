@@ -1,0 +1,6 @@
+You are now fully armed with a high-scale, cost-effective, and resilient architecture:
+	1	Ingestion: Kafka $\rightarrow$ Stage 2 Workers (Client Batching) $\rightarrow$ ClickHouse.
+	2	Deduplication: ReplacingMergeTree for raw data; SummingMergeTree for aggregates.
+	3	Storage: 3-Tier (SSD/HDD/S3) with TTL and Orphan cleanup.
+	4	Availability: Zero-copy replication via S3 and Keeper.
+	5	Analytics: Materialized Views for per-minute/per-hour rollups.

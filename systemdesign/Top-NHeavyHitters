@@ -49,6 +49,9 @@ CREATE TABLE hourly_metrics_destination (
 ) ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMMDD(timestamp)
 ORDER BY (timestamp, server_id);
+
+it will merge jispe order kiya hai
+
 Step 3: The Materialized View (The "Pipe")
 
 This view acts as a trigger. Whenever a block of data is inserted into raw_metrics, this view calculates the hourly sum and sends it to the destination table.
@@ -75,3 +78,11 @@ If you just used a SummingMergeTree on the Source Table, it would never merge th
 The Materialized View acts as the translator that "floors" the time. It takes the data from the Source and says: "Forget the minutes;
 I'm going to change all of these to 10:00 and send them to the Destination Table."
 Without the MV, the SummingMergeTree would have nothing to "sum" because every row would have a different timestamp.
+
+When stage 2 worker inserts batch into raw metrics table, materialised view acts like a reactive pipe.
+The MV performs the GROUP BY (server_id, toStartOfHour(timestamp)) on only that specific batch.
+
+Using the FINAL modifier tells ClickHouse: "I don't care if the background merge hasn't finished yet;
+perform the merge right now in memory for this query."
+
+alag-alag karna hi scaling ka sabse bada secret hai.

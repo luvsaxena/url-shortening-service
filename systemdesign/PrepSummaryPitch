@@ -1,0 +1,11 @@
+When they ask, "Tell us about the architecture you designed for this scale," here is your 30-second power statement:
+
+"I designed a three-stage observability pipeline capable of handling 100,000 servers.
+
+Ingestion: We use a Stage 2 worker layer with client-side batching and at-least-once Kafka commits to ensure zero data loss during spikes.
+
+Storage: We implement a multi-tier strategy (SSD for 24h, HDD for 7 days, and S3 for 30 days) using ClickHouse's automated TTL.
+
+Efficiency: To keep costs low and performance high, we use ReplacingMergeTree for background deduplication and Zero-Copy Replication for near-instant node recovery.
+
+Governance: Finally, we run periodic reconciliation jobs to ensure our S3 bucket stays clean of orphan files, keeping our cloud footprint optimized."
