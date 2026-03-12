@@ -78,6 +78,7 @@ If you just used a SummingMergeTree on the Source Table, it would never merge th
 The Materialized View acts as the translator that "floors" the time. It takes the data from the Source and says: "Forget the minutes;
 I'm going to change all of these to 10:00 and send them to the Destination Table."
 Without the MV, the SummingMergeTree would have nothing to "sum" because every row would have a different timestamp.
+summing is happening in dest table
 
 When stage 2 worker inserts batch into raw metrics table, materialised view acts like a reactive pipe.
 The MV performs the GROUP BY (server_id, toStartOfHour(timestamp)) on only that specific batch.
